@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>simple iOS push notification</title>
+
+		<meta name="author" content="pivotalsquid">
+
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/black.css" id="theme">
+
+		<!-- Code syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+				<section>
+					<h1>simple iOS push notifications</h1>
+				</section>
+
+				<section>
+					<h2>motivation</h2>
+					<p>
+						i wanted to be able to send a notififcation to my phone from a curl command, perhaps at the end of a long running script,
+					</p>
+          <p class="fragment">i wanted to learn a little about swift</p>
+				</section>
+
+				<section>
+					<h2>what was the minimum needed to make that happen?</h2>
+					<ul>
+						<li class="fragment">curl command</li>
+						<li class="fragment">server process</li>
+						<li class="fragment">worker/job</li>
+						<li class="fragment">iOS app</li>
+					</ul>
+				</section>
+
+				<section>
+					<h2>curl command</h2>
+					<pre>
+						<code class="hljs" style="word-wrap: break-word;">curl -X POST -H "Content-Type: application/json" -d '{"msg": "Ping!"}' "http://localhost:3000/ping"</code>
+					</pre>
+				</section>
+
+				<section>
+					<h2>server process</h2>
+					<p>
+						simple endpoint to accept the curl request and create a job
+					</p>
+					<pre>
+						<code class="hljs" style="word-wrap: break-word;">class PingController < ApplicationController
+  def create
+    PingJob.perform_later(params['msg'])
+    respond_to do |format|
+      format.json { head :ok }
+    end
+  end
+end</code>
+					</pre>
+				</section>
+
+				<section>
+					<h2>worker</h2>
+					<pre>
+						<code class="hljs" style="word-wrap: break-word;">require 'houston'
+class PingJob < ActiveJob::Base
+  queue_as :pingme
+
+  def perform(*args)
+    apn = Houston::Client.development
+    apn.certificate = File.read('config/certs/cert_and_key.pem')
+    apn.passphrase = 'password!'
+    device_token = '<6d67435d de8dbaea 10f6d693 ..... e7183199>'
+    notification = Houston::Notification.new(device: device_token)
+    notification.alert = args[0]
+    notification.sound = 'sosumi.aiff'
+    apn.push(notification)
+  end
+end</code>
+					</pre>
+				</section>
+
+        <section>
+          <h2>ios app</h2>
+          <p>
+            create a single view app that does almost nothing
+          </p>
+        </section>
+
+        <section>
+          <p>didFinishLaunchingWithOptions</p>
+          <pre>
+            <code class="hljs" style="word-wrap: break-word; font-size: 75%;">func application(application: UIApplication, didFinishLaunchingWithOptions launchOptions: [NSObject: AnyObject]?) -> Bool {
+  let settings =
+      UIUserNotificationSettings(forTypes: [.Alert, .Badge, .Sound],
+      categories: nil)
+  UIApplication.sharedApplication().registerUserNotificationSettings(settings)
+  UIApplication.sharedApplication().registerForRemoteNotifications()
+  return true
+}</code>
+          </pre>
+        </section>
+
+        <section>
+          <h3>implement method to get device token</h3>
+          <pre>
+            <code class="hljs" style="word-wrap: break-word; font-size: 75%;">func application(application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: NSData) {
+        print("Got token data! \(deviceToken)")
+    }</code>
+          </pre>
+        </section>
+
+        <section>
+          <h3>...and print errors</h3>
+          <pre>
+            <code class="hljs" style="word-wrap: break-word; font-size: 75%;">func application(application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: NSError) {
+        print("Couldn't register: \(error)")
+    }</code>
+          </pre>
+        </section>
+
+        <section>
+          <h2>ready to send a ping!</h2>
+        </section>
+
+        <section>
+          <h2>so, what did i end up learning?</h2>
+        </section>
+
+        <section>
+          <h2>not swift</h2>
+        </section>
+
+        <section>
+          <h2>code examples</h2>
+          <p class="fragment">objective-c examples are everywhere</p>
+          <p class="fragment">swift, nowhere to be found</p>
+        </section>
+
+        <section>
+          <h2>learning xcode</h2>
+          <p class="fragment">creating app id</p>
+          <p class="fragment">apn ssl certificate</p>
+          <p class="fragment">convoluted mess converting .p12 to pem, etc</p>
+        </section>
+
+        <section>
+          <h2>debugging push notifications is hard</h2>
+          <p class="fragment">can only be done on the sending side</p>
+          <p class="fragment">nothing available on the apple side</p>
+        </section>
+        <section>
+          <h2>weird ssl errors</h2>
+          <pre>
+            <code class="hljs" style="word-wrap: break-word; font-size: 75%;">verify error:num=20:unable to get local issuer certificate
+            </code>
+          </pre>
+          <p class="fragment">certificate authority files are your friends</p>
+        </section>
+        <section>
+          <h2>frustration</h2>
+          <p>as simple as this seemed, there are a lot of pieces</p>
+          <p class="fragment">configuring the certs properly is a pain</p>
+        </section>
+			</div>
+
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+
+			// Full list of configuration options available at:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				transition: 'slide', // none/fade/slide/convex/concave/zoom
+
+				// Optional reveal.js plugins
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true },
+					{ src: 'plugin/notes/notes.js', async: true }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
